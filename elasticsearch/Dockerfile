@@ -11,9 +11,11 @@
 # Set gid=0 and make group perms==owner perms
 ################################################################################
 
-FROM amd64/centos:7 AS builder
+FROM clearlinux:latest AS builder
+RUN swupd bundle-add editors wget gzip curl
+RUN swupd update
 
-RUN for iter in {1..10}; do yum update --setopt=tsflags=nodocs -y &&     yum install --setopt=tsflags=nodocs -y wget gzip shadow-utils tar &&     yum clean all && exit_code=0 && break || exit_code=$? && echo "yum error: retry $iter in 10s" && sleep 10; done;     (exit $exit_code)
+ARG es_version=7.7.1
 
 # `tini` is a tiny but valid init for containers. This is used to cleanly
 # control how ES and any child processes are shut down.
@@ -25,13 +27,15 @@ RUN wget --no-cookies --quiet https://github.com/krallin/tini/releases/download/
 
 ENV PATH /usr/share/elasticsearch/bin:$PATH
 
-RUN groupadd -g 1000 elasticsearch &&     adduser -u 1000 -g 1000 -d /usr/share/elasticsearch elasticsearch
+#jbolle commented. group already exists
+#RUN groupadd -g 1000 elasticsearch &&     adduser -u 1000 -g 1000 -d /usr/share/elasticsearch elasticsearch
 
 WORKDIR /usr/share/elasticsearch
 
-RUN cd /opt && curl --retry 8 -s -L -O https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.7.1-linux-x86_64.tar.gz && cd -
+RUN mkdir -p /opt
+RUN cd /opt && curl --retry 8 -s -L -O https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-${es_version}-linux-x86_64.tar.gz && cd -
 
-RUN tar zxf /opt/elasticsearch-7.7.1-linux-x86_64.tar.gz --strip-components=1
+RUN tar zxf /opt/elasticsearch-${es_version}-linux-x86_64.tar.gz --strip-components=1
 RUN grep ES_DISTRIBUTION_TYPE=tar /usr/share/elasticsearch/bin/elasticsearch-env     && sed -i -e 's/ES_DISTRIBUTION_TYPE=tar/ES_DISTRIBUTION_TYPE=docker/' /usr/share/elasticsearch/bin/elasticsearch-env
 RUN mkdir -p config config/jvm.options.d data logs
 RUN chmod 0775 config config/jvm.options.d data logs
@@ -44,18 +48,19 @@ RUN chmod 0660 config/elasticsearch.yml config/log4j2.properties
 # Add entrypoint
 ################################################################################
 
-FROM amd64/centos:7
+FROM clearlinux:latest
+RUN swupd bundle-add editors wget gzip curl
+RUN swupd update
 
 ENV ELASTIC_CONTAINER true
 
 COPY --from=builder /tini /tini
 
-RUN for iter in {1..10}; do yum update --setopt=tsflags=nodocs -y &&     yum install --setopt=tsflags=nodocs -y nc shadow-utils zip unzip &&     yum clean all && exit_code=0 && break || exit_code=$? && echo "yum error: retry $iter in 10s" && sleep 10; done;     (exit $exit_code)
-
-RUN groupadd -g 1000 elasticsearch &&     adduser -u 1000 -g 1000 -G 0 -d /usr/share/elasticsearch elasticsearch &&     chmod 0775 /usr/share/elasticsearch &&     chgrp 0 /usr/share/elasticsearch
+#jbolle commented due to docker build fail
+#RUN groupadd -g 1000 elasticsearch &&     adduser -u 1000 -g 1000 -G 0 -d /usr/share/elasticsearch elasticsearch &&     chmod 0775 /usr/share/elasticsearch &&     chgrp 0 /usr/share/elasticsearch
 
 WORKDIR /usr/share/elasticsearch
-COPY --from=builder --chown=1000:0 /usr/share/elasticsearch /usr/share/elasticsearch
+COPY --from=builder --chown=314:0 /usr/share/elasticsearch /usr/share/elasticsearch
 
 # Replace OpenJDK's built-in CA certificate keystore with the one from the OS
 # vendor. The latter is superior in several ways.
@@ -66,14 +71,17 @@ ENV PATH /usr/share/elasticsearch/bin:$PATH
 
 COPY bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-RUN chmod g=u /etc/passwd &&     chmod 0775 /usr/local/bin/docker-entrypoint.sh
+#jbolle removed, clear docker doesn't have /etc/passwd
+#RUN chmod g=u /etc/passwd &&     chmod 0775 /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0775 /usr/local/bin/docker-entrypoint.sh
 
 # Ensure that there are no files with setuid or setgid, in order to mitigate "stackclash" attacks.
 RUN find / -xdev -perm -4000 -exec chmod ug-s {} +
 
 EXPOSE 9200 9300
 
-LABEL org.label-schema.build-date="2020-05-28T16:30:01.040088Z"   org.label-schema.license="Elastic-License"   org.label-schema.name="Elasticsearch"   org.label-schema.schema-version="1.0"   org.label-schema.url="https://www.elastic.co/products/elasticsearch"   org.label-schema.usage="https://www.elastic.co/guide/en/elasticsearch/reference/index.html"   org.label-schema.vcs-ref="ad56dce891c901a492bb1ee393f12dfff473a423"   org.label-schema.vcs-url="https://github.com/elastic/elasticsearch"   org.label-schema.vendor="Elastic"   org.label-schema.version="7.7.1"   org.opencontainers.image.created="2020-05-28T16:30:01.040088Z"   org.opencontainers.image.documentation="https://www.elastic.co/guide/en/elasticsearch/reference/index.html"   org.opencontainers.image.licenses="Elastic-License"   org.opencontainers.image.revision="ad56dce891c901a492bb1ee393f12dfff473a423"   org.opencontainers.image.source="https://github.com/elastic/elasticsearch"   org.opencontainers.image.title="Elasticsearch"   org.opencontainers.image.url="https://www.elastic.co/products/elasticsearch"   org.opencontainers.image.vendor="Elastic"   org.opencontainers.image.version="7.7.1"
+#jbolle commented label
+#LABEL org.label-schema.build-date="2020-05-28T16:30:01.040088Z"   org.label-schema.license="Elastic-License"   org.label-schema.name="Elasticsearch"   org.label-schema.schema-version="1.0"   org.label-schema.url="https://www.elastic.co/products/elasticsearch"   org.label-schema.usage="https://www.elastic.co/guide/en/elasticsearch/reference/index.html"   org.label-schema.vcs-ref="ad56dce891c901a492bb1ee393f12dfff473a423"   org.label-schema.vcs-url="https://github.com/elastic/elasticsearch"   org.label-schema.vendor="Elastic"   org.label-schema.version="7.7.1"   org.opencontainers.image.created="2020-05-28T16:30:01.040088Z"   org.opencontainers.image.documentation="https://www.elastic.co/guide/en/elasticsearch/reference/index.html"   org.opencontainers.image.licenses="Elastic-License"   org.opencontainers.image.revision="ad56dce891c901a492bb1ee393f12dfff473a423"   org.opencontainers.image.source="https://github.com/elastic/elasticsearch"   org.opencontainers.image.title="Elasticsearch"   org.opencontainers.image.url="https://www.elastic.co/products/elasticsearch"   org.opencontainers.image.vendor="Elastic"   org.opencontainers.image.version="7.7.1"
 
 ENTRYPOINT ["/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 # Dummy overridable parameter parsed by entrypoint

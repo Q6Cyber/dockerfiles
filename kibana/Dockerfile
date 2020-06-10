@@ -6,11 +6,13 @@
 # Build stage 0
 # Extract Kibana and make various file manipulations.
 ################################################################################
-FROM centos:7 AS prep_files
-# Add tar and gzip
-RUN yum update -y && yum install -y tar gzip && yum clean all
+FROM clearlinux:latest AS prep_files
+RUN swupd bundle-add editors wget gzip curl
+RUN swupd update
+RUN mkdir -p /opt
+
 RUN cd /opt && curl --retry 8 -s -L -O https://artifacts.elastic.co/downloads/kibana/kibana-7.7.1-linux-x86_64.tar.gz && cd -
-RUN mkdir /usr/share/kibana
+RUN mkdir -p /usr/share/kibana
 WORKDIR /usr/share/kibana
 RUN tar --strip-components=1 -zxf /opt/kibana-7.7.1-linux-x86_64.tar.gz
 # Ensure that group permissions are the same as user permissions.
@@ -24,21 +26,24 @@ RUN find /usr/share/kibana -type d -exec chmod g+s {} \;
 # Build stage 1
 # Copy prepared files from the previous stage and complete the image.
 ################################################################################
-FROM centos:7
+FROM clearlinux:latest
 EXPOSE 5601
 
-# Add Reporting dependencies.
-RUN yum update -y && yum install -y fontconfig freetype shadow-utils && yum clean all
+RUN swupd bundle-add editors wget gzip curl fonts-basic
+RUN swupd update
 
 # Add an init process, check the checksum to make sure it's a match
+RUN mkdir -p /usr/local/bin
 RUN curl -L -o /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64
 RUN echo "37f2c1f0372a45554f1b89924fbb134fc24c3756efaedf11e07f599494e0eff9  /usr/local/bin/dumb-init" | sha256sum -c -
 RUN chmod +x /usr/local/bin/dumb-init
 
+RUN mkdir -p /opt
 
 # Bring in Kibana from the initial stage.
 COPY --from=prep_files --chown=1000:0 /usr/share/kibana /usr/share/kibana
 WORKDIR /usr/share/kibana
+
 RUN ln -s /usr/share/kibana /opt/kibana
 
 ENV ELASTIC_CONTAINER true
@@ -61,7 +66,8 @@ RUN find / -xdev -perm -4000 -exec chmod u-s {} +
 RUN groupadd --gid 1000 kibana && useradd --uid 1000 --gid 1000 --home-dir /usr/share/kibana --no-create-home kibana
 USER kibana
 
-LABEL org.label-schema.schema-version="1.0" org.label-schema.vendor="Elastic" org.label-schema.name="kibana" org.label-schema.version="7.7.1" org.label-schema.url="https://www.elastic.co/products/kibana" org.label-schema.vcs-url="https://github.com/elastic/kibana" org.label-schema.license="Elastic License" org.label-schema.usage="https://www.elastic.co/guide/en/kibana/index.html" org.label-schema.build-date="2020-05-28T17:35:57.341Z" license="Elastic License"
+#jbolle removed label
+#LABEL org.label-schema.schema-version="1.0" org.label-schema.vendor="Elastic" org.label-schema.name="kibana" org.label-schema.version="7.7.1" org.label-schema.url="https://www.elastic.co/products/kibana" org.label-schema.vcs-url="https://github.com/elastic/kibana" org.label-schema.license="Elastic License" org.label-schema.usage="https://www.elastic.co/guide/en/kibana/index.html" org.label-schema.build-date="2020-05-28T17:35:57.341Z" license="Elastic License"
 
 ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
 
